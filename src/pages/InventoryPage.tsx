@@ -4,12 +4,13 @@ import { ProductCard, type Product } from "@/components/ProductCard";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import redVRaptorImg from "@/assets/red-v-raptor.jpg";
 
 const MOCK_PRODUCTS: Product[] = [
   { id: "1", name: "Sony FX6 Cinema Camera", category: "Cámaras", price_per_day: 180, stock_total: 4, stock_available: 2, image_url: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&q=80" },
   { id: "2", name: "ARRI Signature Prime 35mm", category: "Ópticas", price_per_day: 120, stock_total: 6, stock_available: 4, image_url: "https://images.unsplash.com/photo-1617005082133-548c4dd27f35?w=600&q=80" },
   { id: "3", name: "DJI Ronin 4D Gimbal", category: "Estabilización", price_per_day: 95, stock_total: 3, stock_available: 0, image_url: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=600&q=80" },
-  { id: "4", name: "RED V-Raptor XL 8K", category: "Cámaras", price_per_day: 350, stock_total: 2, stock_available: 1, image_url: "https://images.unsplash.com/photo-1585376010986-4252e2ef2407?w=600&q=80" },
+  { id: "4", name: "RED V-Raptor XL 8K", category: "Cámaras", price_per_day: 350, stock_total: 2, stock_available: 1, image_url: redVRaptorImg },
   { id: "5", name: "Aputure 600d Pro", category: "Iluminación", price_per_day: 65, stock_total: 8, stock_available: 5, image_url: "https://images.unsplash.com/photo-1574717025058-2f8737d2e2b7?w=600&q=80" },
   { id: "6", name: "Sennheiser MKH 416", category: "Audio", price_per_day: 35, stock_total: 10, stock_available: 7, image_url: "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=600&q=80" },
   { id: "7", name: "Blackmagic ATEM Mini Pro", category: "Switchers", price_per_day: 55, stock_total: 5, stock_available: 3, image_url: "https://images.unsplash.com/photo-1598550476439-6847785fcea6?w=600&q=80" },

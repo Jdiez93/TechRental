@@ -1,6 +1,6 @@
-import { Package, CalendarDays, Shield, Bell, LogOut, LayoutDashboard } from "lucide-react";
+import { Package, CalendarDays, Shield, Bell, LogOut, LayoutDashboard, LogIn } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Sidebar,
   SidebarContent,
@@ -28,12 +28,11 @@ const adminNav = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const location = useLocation();
+  const { user, isAdmin, signOut } = useAuth();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarContent>
-        {/* Brand */}
         <div className="p-4 flex items-center gap-3 border-b border-border">
           <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center shrink-0">
             <span className="text-primary-foreground font-bold text-sm">N</span>
@@ -70,36 +69,53 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
-            Administración
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {adminNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      className="hover:bg-sidebar-accent/50 transition-colors duration-150"
-                      activeClassName="bg-sidebar-accent text-primary font-medium"
-                    >
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
+              Administración
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminNav.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        className="hover:bg-sidebar-accent/50 transition-colors duration-150"
+                        activeClassName="bg-sidebar-accent text-primary font-medium"
+                      >
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-border p-3">
-        <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
-          <LogOut className="h-3.5 w-3.5" />
-          {!collapsed && <span>Cerrar sesión</span>}
-        </button>
+        {user ? (
+          <div className="space-y-2">
+            {!collapsed && (
+              <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+            )}
+            <button
+              onClick={signOut}
+              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {!collapsed && <span>Cerrar sesión</span>}
+            </button>
+          </div>
+        ) : (
+          <NavLink to="/auth" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
+            <LogIn className="h-3.5 w-3.5" />
+            {!collapsed && <span>Iniciar sesión</span>}
+          </NavLink>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
