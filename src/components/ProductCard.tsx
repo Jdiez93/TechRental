@@ -35,7 +35,7 @@ export function ProductCard({ product, index }: { product: Product; index: numbe
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: index * 0.02, ease: "easeOut" }}
+        transition={{ duration: 0.3, delay: index * 0.06, ease: "easeOut" }}
         className="group surface-elevated rounded-lg overflow-hidden hover:border-primary/30 transition-colors duration-200"
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
@@ -47,30 +47,19 @@ export function ProductCard({ product, index }: { product: Product; index: numbe
           />
           <Badge
             variant={inStock ? "default" : "destructive"}
-            className={`absolute top-2 right-2 text-[10px] font-mono ${
-              inStock ? "bg-accent text-accent-foreground" : ""
-            }`}
+            className={`absolute top-2 right-2 text-[10px] font-mono ${inStock ? "bg-accent text-accent-foreground" : ""}`}
           >
             {inStock ? `${product.stock_available} disp.` : "Agotado"}
           </Badge>
         </div>
         <div className="p-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            {product.category}
-          </p>
-          <h3 className="text-sm font-medium text-foreground leading-tight">
-            {product.name}
-          </h3>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{product.category}</p>
+          <h3 className="text-sm font-medium text-foreground leading-tight">{product.name}</h3>
           <div className="flex items-center justify-between pt-1">
             <span className="font-mono text-sm text-primary font-semibold">
               €{product.price_per_day}<span className="text-muted-foreground font-normal text-xs">/día</span>
             </span>
-            <Button
-              size="sm"
-              disabled={!inStock}
-              onClick={handleRent}
-              className="h-7 text-xs px-3 transition-all duration-150"
-            >
+            <Button size="sm" disabled={!inStock} onClick={handleRent} className="h-7 text-xs px-3 transition-all duration-150">
               Alquilar
             </Button>
           </div>

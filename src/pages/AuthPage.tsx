@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
@@ -31,8 +31,7 @@ export default function AuthPage() {
           options: { data: { display_name: displayName } },
         });
         if (error) throw error;
-        toast.success("Cuenta creada correctamente");
-        navigate("/");
+        toast.success("Cuenta creada. Revisa tu email para confirmar.");
       }
     } catch (err: any) {
       toast.error(err.message || "Error de autenticación");
@@ -49,7 +48,6 @@ export default function AuthPage() {
         transition={{ duration: 0.4 }}
         className="w-full max-w-sm"
       >
-        {/* Brand */}
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-lg">N</span>
@@ -59,7 +57,7 @@ export default function AuthPage() {
           </span>
         </div>
 
-        <div className="surface-elevated rounded-lg p-6 space-y-6">
+        <div className="surface-elevated rounded-lg p-6 space-y-6 shadow-2xl shadow-primary/5">
           <div className="text-center">
             <h1 className="text-lg font-semibold text-foreground">
               {isLogin ? "Iniciar Sesión" : "Crear Cuenta"}
@@ -73,37 +71,16 @@ export default function AuthPage() {
             {!isLogin && (
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Nombre</label>
-                <Input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Tu nombre"
-                  className="bg-background border-border"
-                  required
-                />
+                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Tu nombre" className="bg-background border-border" required />
               </div>
             )}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Email</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
-                className="bg-background border-border"
-                required
-              />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@email.com" className="bg-background border-border" required />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Contraseña</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="bg-background border-border"
-                minLength={6}
-                required
-              />
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="bg-background border-border" minLength={6} required />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Cargando..." : isLogin ? "Entrar" : "Crear Cuenta"}
@@ -111,10 +88,7 @@ export default function AuthPage() {
           </form>
 
           <div className="text-center">
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-xs text-muted-foreground hover:text-primary transition-colors"
-            >
+            <button onClick={() => setIsLogin(!isLogin)} className="text-xs text-muted-foreground hover:text-primary transition-colors">
               {isLogin ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
             </button>
           </div>
