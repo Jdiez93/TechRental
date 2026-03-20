@@ -142,66 +142,79 @@ export function CheckoutDialog({ product, open, onClose, onSuccess }: CheckoutDi
 
   const canProceed = startDate && endDate && !rangeHasConflict && !duplicateWarning && !loadingDates;
 
-  // Canvas drawing with proper event handling
+  // Canvas drawing with proper event handling — delayed to wait for animation
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || step !== 3) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (step !== 3) return;
 
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * 2;
-    canvas.height = rect.height * 2;
-    ctx.scale(2, 2);
-    ctx.strokeStyle = "hsl(217 91% 60%)";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    const timerId = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    const getPos = (e: MouseEvent | TouchEvent) => {
-      const r = canvas.getBoundingClientRect();
-      const touch = "touches" in e ? e.touches[0] : e;
-      return { x: touch.clientX - r.left, y: touch.clientY - r.top };
-    };
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      canvas.width = rect.width * 2;
+      canvas.height = rect.height * 2;
+      ctx.scale(2, 2);
+      ctx.strokeStyle = "hsl(217 91% 60%)";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
 
-    const start = (e: MouseEvent | TouchEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      isDrawingRef.current = true;
-      hasDrawnRef.current = true;
-      const pos = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    };
-    const draw = (e: MouseEvent | TouchEvent) => {
-      if (!isDrawingRef.current) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const pos = getPos(e);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-    };
-    const stop = (e: Event) => {
-      e.preventDefault();
-      isDrawingRef.current = false;
-    };
+      const getPos = (e: MouseEvent | TouchEvent) => {
+        const r = canvas.getBoundingClientRect();
+        const touch = "touches" in e ? e.touches[0] : e;
+        return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+      };
 
-    canvas.addEventListener("mousedown", start, { passive: false });
-    canvas.addEventListener("mousemove", draw, { passive: false });
-    canvas.addEventListener("mouseup", stop, { passive: false });
-    canvas.addEventListener("mouseleave", stop, { passive: false });
-    canvas.addEventListener("touchstart", start, { passive: false });
-    canvas.addEventListener("touchmove", draw, { passive: false });
-    canvas.addEventListener("touchend", stop, { passive: false });
+      const start = (e: MouseEvent | TouchEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isDrawingRef.current = true;
+        hasDrawnRef.current = true;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      };
+      const draw = (e: MouseEvent | TouchEvent) => {
+        if (!isDrawingRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const pos = getPos(e);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      };
+      const stop = () => {
+        isDrawingRef.current = false;
+      };
+
+      canvas.addEventListener("mousedown", start, { passive: false });
+      canvas.addEventListener("mousemove", draw, { passive: false });
+      canvas.addEventListener("mouseup", stop);
+      canvas.addEventListener("mouseleave", stop);
+      canvas.addEventListener("touchstart", start, { passive: false });
+      canvas.addEventListener("touchmove", draw, { passive: false });
+      canvas.addEventListener("touchend", stop);
+
+      // Store cleanup ref
+      (canvas as any).__cleanupSignature = () => {
+        canvas.removeEventListener("mousedown", start);
+        canvas.removeEventListener("mousemove", draw);
+        canvas.removeEventListener("mouseup", stop);
+        canvas.removeEventListener("mouseleave", stop);
+        canvas.removeEventListener("touchstart", start);
+        canvas.removeEventListener("touchmove", draw);
+        canvas.removeEventListener("touchend", stop);
+      };
+    }, 300); // wait for framer-motion animation
 
     return () => {
-      canvas.removeEventListener("mousedown", start);
-      canvas.removeEventListener("mousemove", draw);
-      canvas.removeEventListener("mouseup", stop);
-      canvas.removeEventListener("mouseleave", stop);
-      canvas.removeEventListener("touchstart", start);
-      canvas.removeEventListener("touchmove", draw);
-      canvas.removeEventListener("touchend", stop);
+      clearTimeout(timerId);
+      const canvas = canvasRef.current;
+      if (canvas && (canvas as any).__cleanupSignature) {
+        (canvas as any).__cleanupSignature();
+      }
     };
   }, [step]);
 
