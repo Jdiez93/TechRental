@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Bot, User } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 export function AIChatbot() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "¡Hola! Soy el asistente de Nexus Rental. ¿En qué puedo ayudarte? Puedo sugerirte equipos y Smart Bundles para tu proyecto." },
@@ -21,8 +25,16 @@ export function AIChatbot() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  const handleOpen = () => {
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+    setOpen(!open);
+  };
+
   const send = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !user) return;
     const userMsg: Msg = { role: "user", content: input.trim() };
     setInput("");
     setMessages((prev) => [...prev, userMsg]);
@@ -95,7 +107,7 @@ export function AIChatbot() {
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        onClick={() => setOpen(!open)}
+        onClick={handleOpen}
         className="fixed bottom-6 right-6 z-50 h-12 w-12 rounded-full bg-primary flex items-center justify-center shadow-lg shadow-primary/20"
       >
         {open ? <X className="h-5 w-5 text-primary-foreground" /> : <MessageCircle className="h-5 w-5 text-primary-foreground" />}
@@ -103,7 +115,7 @@ export function AIChatbot() {
 
       {/* Chat window */}
       <AnimatePresence>
-        {open && (
+        {open && user && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -126,7 +138,13 @@ export function AIChatbot() {
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-[200px] max-h-[400px]">
               {messages.map((msg, i) => (
-                <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
                   {msg.role === "assistant" && (
                     <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                       <Bot className="h-3 w-3 text-primary" />
@@ -146,7 +164,7 @@ export function AIChatbot() {
                       <User className="h-3 w-3 text-muted-foreground" />
                     </div>
                   )}
-                </div>
+                </motion.div>
               ))}
               {loading && !messages[messages.length - 1]?.content && (
                 <div className="flex gap-2">

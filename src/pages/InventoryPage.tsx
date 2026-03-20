@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { ProductCard, type Product } from "@/components/ProductCard";
 import { ScrollReveal } from "@/components/ScrollReveal";
@@ -13,36 +13,37 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      const today = new Date().toISOString().split("T")[0];
+  const loadProducts = useCallback(async () => {
+    const today = new Date().toISOString().split("T")[0];
 
-      const [productsRes, bookingsRes] = await Promise.all([
-        supabase.from("products").select("*"),
-        supabase.from("bookings").select("product_id").lte("start_date", today).gte("end_date", today).eq("status", "confirmed"),
-      ]);
+    const [productsRes, bookingsRes] = await Promise.all([
+      supabase.from("products").select("*"),
+      supabase.from("bookings").select("product_id").lte("start_date", today).gte("end_date", today).eq("status", "confirmed"),
+    ]);
 
-      const activeBookings = bookingsRes.data ?? [];
-      const bookingCount: Record<string, number> = {};
-      activeBookings.forEach((b) => {
-        bookingCount[b.product_id] = (bookingCount[b.product_id] || 0) + 1;
-      });
+    const activeBookings = bookingsRes.data ?? [];
+    const bookingCount: Record<string, number> = {};
+    activeBookings.forEach((b) => {
+      bookingCount[b.product_id] = (bookingCount[b.product_id] || 0) + 1;
+    });
 
-      const mapped: Product[] = (productsRes.data ?? []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        price_per_day: Number(p.price_per_day),
-        stock_total: p.stock_total,
-        stock_available: p.stock_total - (bookingCount[p.id] || 0),
-        image_url: p.image_url || redVRaptorImg,
-      }));
+    const mapped: Product[] = (productsRes.data ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      price_per_day: Number(p.price_per_day),
+      stock_total: p.stock_total,
+      stock_available: p.stock_total - (bookingCount[p.id] || 0),
+      image_url: p.image_url || redVRaptorImg,
+    }));
 
-      setProducts(mapped);
-      setLoading(false);
-    }
-    load();
+    setProducts(mapped);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
 
   const filtered = products.filter(
     (p) =>
@@ -92,7 +93,7 @@ export default function InventoryPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((product, i) => (
-              <ProductCard key={product.id} product={product} index={i} />
+              <ProductCard key={product.id} product={product} index={i} onBookingComplete={loadProducts} />
             ))}
           </div>
         )}
