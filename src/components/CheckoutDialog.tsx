@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, eachDayOfInterval, isWithinInterval, isBefore, startOfDay } from "date-fns";
 import { CalendarIcon, Shield, Check, X, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,6 +15,7 @@ interface CheckoutDialogProps {
   product: Product;
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 const stepVariants = {
@@ -23,17 +24,24 @@ const stepVariants = {
   exit: { opacity: 0, x: -30 },
 };
 
-export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) {
+interface BookedRange {
+  start: Date;
+  end: Date;
+}
+
+export function CheckoutDialog({ product, open, onClose, onSuccess }: CheckoutDialogProps) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [insurance, setInsurance] = useState(false);
   const [signing, setSigning] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [checkingAvail, setCheckingAvail] = useState(false);
+  const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
+  const hasDrawnRef = useRef(false);
 
   const days =
     startDate && endDate
@@ -43,11 +51,37 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
   const basePrice = days * product.price_per_day;
   const totalPrice = insurance ? basePrice * (1 + insuranceRate) : basePrice;
 
-  // Check availability when dates change
+  // Load booked dates for this product
   useEffect(() => {
-    if (!startDate || !endDate) { setAvailable(null); return; }
+    if (!open) return;
     let cancelled = false;
-    setCheckingAvail(true);
+    setLoadingDates(true);
+
+    (async () => {
+      const { data } = await supabase
+        .from("bookings")
+        .select("start_date, end_date")
+        .eq("product_id", product.id)
+        .eq("status", "confirmed");
+
+      if (!cancelled) {
+        const ranges: BookedRange[] = (data ?? []).map((b) => ({
+          start: new Date(b.start_date),
+          end: new Date(b.end_date),
+        }));
+        setBookedRanges(ranges);
+        setLoadingDates(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, product.id]);
+
+  // Check for duplicate booking by same user
+  useEffect(() => {
+    if (!startDate || !endDate || !user) { setDuplicateWarning(false); return; }
+    let cancelled = false;
+
     (async () => {
       const sd = format(startDate, "yyyy-MM-dd");
       const ed = format(endDate, "yyyy-MM-dd");
@@ -55,16 +89,16 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .eq("product_id", product.id)
+        .eq("user_id", user.id)
         .eq("status", "confirmed")
         .lte("start_date", ed)
         .gte("end_date", sd);
-      if (!cancelled) {
-        setAvailable((count ?? 0) < product.stock_total);
-        setCheckingAvail(false);
-      }
+
+      if (!cancelled) setDuplicateWarning((count ?? 0) > 0);
     })();
+
     return () => { cancelled = true; };
-  }, [startDate, endDate, product.id, product.stock_total]);
+  }, [startDate, endDate, user, product.id]);
 
   // Reset state on open
   useEffect(() => {
@@ -73,19 +107,51 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
       setStartDate(undefined);
       setEndDate(undefined);
       setInsurance(false);
-      setAvailable(null);
+      setDuplicateWarning(false);
+      hasDrawnRef.current = false;
     }
   }, [open]);
 
-  // Canvas drawing
+  const isDateBooked = useCallback((date: Date) => {
+    const d = startOfDay(date);
+    return bookedRanges.some((range) => {
+      const s = startOfDay(range.start);
+      const e = startOfDay(range.end);
+      return isWithinInterval(d, { start: s, end: e });
+    });
+  }, [bookedRanges]);
+
+  const disabledDays = useCallback((date: Date) => {
+    if (isBefore(startOfDay(date), startOfDay(new Date()))) return true;
+    return isDateBooked(date);
+  }, [isDateBooked]);
+
+  const disabledEndDays = useCallback((date: Date) => {
+    if (isBefore(startOfDay(date), startOfDay(startDate || new Date()))) return true;
+    return isDateBooked(date);
+  }, [isDateBooked, startDate]);
+
+  // Check if selected range overlaps booked dates
+  const rangeHasConflict = startDate && endDate && bookedRanges.some((range) => {
+    const s = startOfDay(range.start);
+    const e = startOfDay(range.end);
+    const selStart = startOfDay(startDate);
+    const selEnd = startOfDay(endDate);
+    return selStart <= e && selEnd >= s;
+  });
+
+  const canProceed = startDate && endDate && !rangeHasConflict && !duplicateWarning && !loadingDates;
+
+  // Canvas drawing with proper event handling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || step !== 3) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    canvas.width = canvas.offsetWidth * 2;
-    canvas.height = canvas.offsetHeight * 2;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
     ctx.scale(2, 2);
     ctx.strokeStyle = "hsl(217 91% 60%)";
     ctx.lineWidth = 2;
@@ -93,13 +159,16 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
     ctx.lineJoin = "round";
 
     const getPos = (e: MouseEvent | TouchEvent) => {
-      const rect = canvas.getBoundingClientRect();
+      const r = canvas.getBoundingClientRect();
       const touch = "touches" in e ? e.touches[0] : e;
-      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+      return { x: touch.clientX - r.left, y: touch.clientY - r.top };
     };
 
     const start = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
       isDrawingRef.current = true;
+      hasDrawnRef.current = true;
       const pos = getPos(e);
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
@@ -107,19 +176,23 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
     const draw = (e: MouseEvent | TouchEvent) => {
       if (!isDrawingRef.current) return;
       e.preventDefault();
+      e.stopPropagation();
       const pos = getPos(e);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
     };
-    const stop = () => { isDrawingRef.current = false; };
+    const stop = (e: Event) => {
+      e.preventDefault();
+      isDrawingRef.current = false;
+    };
 
-    canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", stop);
-    canvas.addEventListener("mouseleave", stop);
+    canvas.addEventListener("mousedown", start, { passive: false });
+    canvas.addEventListener("mousemove", draw, { passive: false });
+    canvas.addEventListener("mouseup", stop, { passive: false });
+    canvas.addEventListener("mouseleave", stop, { passive: false });
     canvas.addEventListener("touchstart", start, { passive: false });
     canvas.addEventListener("touchmove", draw, { passive: false });
-    canvas.addEventListener("touchend", stop);
+    canvas.addEventListener("touchend", stop, { passive: false });
 
     return () => {
       canvas.removeEventListener("mousedown", start);
@@ -138,10 +211,14 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasDrawnRef.current = false;
   };
 
   const handleConfirm = async () => {
-    if (!user || !startDate || !endDate || !canvasRef.current) return;
+    if (!user || !startDate || !endDate || !canvasRef.current || !hasDrawnRef.current) {
+      if (!hasDrawnRef.current) toast.error("Por favor, firma el contrato antes de confirmar.");
+      return;
+    }
     setSigning(true);
 
     const signatureData = canvasRef.current.toDataURL("image/png");
@@ -163,6 +240,7 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
       console.error(error);
     } else {
       toast.success("¡Reserva confirmada!");
+      onSuccess?.();
       onClose();
     }
   };
@@ -203,7 +281,6 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
               <motion.div
                 key={s}
                 className={cn("h-1 flex-1 rounded-full transition-colors", s <= step ? "bg-primary" : "bg-secondary")}
-                layoutId={`step-${s}`}
               />
             ))}
           </div>
@@ -213,6 +290,7 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
             {step === 1 && (
               <motion.div key="step1" variants={stepVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.2 }} className="space-y-4">
                 <p className="text-sm font-medium text-foreground">1. Selecciona fechas</p>
+                {loadingDates && <p className="text-[10px] text-muted-foreground animate-pulse">Cargando disponibilidad...</p>}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Inicio</label>
@@ -224,7 +302,15 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={startDate} onSelect={setStartDate} disabled={(d) => d < new Date()} className="p-3 pointer-events-auto" />
+                        <Calendar
+                          mode="single"
+                          selected={startDate}
+                          onSelect={(d) => { setStartDate(d); if (endDate && d && d > endDate) setEndDate(undefined); }}
+                          disabled={disabledDays}
+                          className="p-3 pointer-events-auto"
+                          modifiers={{ booked: (date) => isDateBooked(date) }}
+                          modifiersClassNames={{ booked: "text-destructive line-through opacity-50" }}
+                        />
                       </PopoverContent>
                     </Popover>
                   </div>
@@ -238,7 +324,15 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={endDate} onSelect={setEndDate} disabled={(d) => d < (startDate || new Date())} className="p-3 pointer-events-auto" />
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={setEndDate}
+                          disabled={disabledEndDays}
+                          className="p-3 pointer-events-auto"
+                          modifiers={{ booked: (date) => isDateBooked(date) }}
+                          modifiersClassNames={{ booked: "text-destructive line-through opacity-50" }}
+                        />
                       </PopoverContent>
                     </Popover>
                   </div>
@@ -248,14 +342,15 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
                     <p className="text-xs text-muted-foreground">
                       {days} día{days > 1 ? "s" : ""} × €{product.price_per_day}/día = <span className="font-mono text-foreground">€{basePrice.toFixed(2)}</span>
                     </p>
-                    {checkingAvail && <p className="text-[10px] text-muted-foreground animate-pulse">Verificando disponibilidad...</p>}
-                    {available === false && (
-                      <p className="text-xs text-destructive font-medium">No disponible en estas fechas</p>
-                    )}
                   </div>
                 )}
-                <Button className="w-full" disabled={!startDate || !endDate || available === false || checkingAvail} onClick={() => setStep(2)}>
-                  {checkingAvail ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {rangeHasConflict && (
+                  <p className="text-xs text-destructive font-medium">No disponible en estas fechas — hay solapamiento con una reserva existente.</p>
+                )}
+                {duplicateWarning && (
+                  <p className="text-xs text-destructive font-medium">Ya tienes una reserva activa para este producto en estas fechas.</p>
+                )}
+                <Button className="w-full" disabled={!canProceed} onClick={() => setStep(2)}>
                   Siguiente
                 </Button>
               </motion.div>
@@ -298,8 +393,12 @@ export function CheckoutDialog({ product, open, onClose }: CheckoutDialogProps) 
               <motion.div key="step3" variants={stepVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.2 }} className="space-y-4">
                 <p className="text-sm font-medium text-foreground">3. Firma digital</p>
                 <p className="text-xs text-muted-foreground">Firma en el recuadro para aceptar el contrato de alquiler.</p>
-                <div className="relative rounded-md overflow-hidden border border-border bg-muted/10">
-                  <canvas ref={canvasRef} className="w-full h-32 cursor-crosshair touch-none" />
+                <div className="relative rounded-md overflow-hidden border border-border bg-muted/10" style={{ touchAction: "none" }}>
+                  <canvas
+                    ref={canvasRef}
+                    className="w-full h-32 cursor-crosshair"
+                    style={{ touchAction: "none" }}
+                  />
                   <button
                     onClick={clearSignature}
                     className="absolute top-2 right-2 text-[10px] text-muted-foreground hover:text-foreground bg-card/80 rounded px-2 py-0.5 backdrop-blur-sm"

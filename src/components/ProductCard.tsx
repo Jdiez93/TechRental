@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { CheckoutDialog } from "@/components/CheckoutDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -16,7 +16,7 @@ export interface Product {
   image_url: string;
 }
 
-export function ProductCard({ product, index }: { product: Product; index: number }) {
+export function ProductCard({ product, index, onBookingComplete }: { product: Product; index: number; onBookingComplete?: () => void }) {
   const inStock = product.stock_available > 0;
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const { user } = useAuth();
@@ -30,12 +30,17 @@ export function ProductCard({ product, index }: { product: Product; index: numbe
     setCheckoutOpen(true);
   };
 
+  const handleSuccess = useCallback(() => {
+    onBookingComplete?.();
+  }, [onBookingComplete]);
+
   return (
     <>
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: index * 0.06, ease: "easeOut" }}
+        whileHover={{ y: -2 }}
         className="group surface-elevated rounded-lg overflow-hidden hover:border-primary/30 transition-colors duration-200"
       >
         <div className="aspect-[4/3] bg-secondary/50 relative overflow-hidden">
@@ -65,7 +70,7 @@ export function ProductCard({ product, index }: { product: Product; index: numbe
           </div>
         </div>
       </motion.div>
-      <CheckoutDialog product={product} open={checkoutOpen} onClose={() => setCheckoutOpen(false)} />
+      <CheckoutDialog product={product} open={checkoutOpen} onClose={() => setCheckoutOpen(false)} onSuccess={handleSuccess} />
     </>
   );
 }

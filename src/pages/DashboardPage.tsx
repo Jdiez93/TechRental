@@ -1,19 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, CalendarDays, TrendingUp, AlertTriangle } from "lucide-react";
+import { Package, CalendarDays, TrendingUp, AlertTriangle, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { motion } from "framer-motion";
 
-interface Stats {
+interface AdminStats {
   totalProducts: number;
   activeRentals: number;
   monthRevenue: number;
   pendingReturns: number;
+}
+
+interface CustomerStats {
+  monthlySpend: number;
+  totalRentals: number;
+  activeRentals: number;
+  totalProducts: number;
 }
 
 interface Activity {
@@ -25,19 +32,21 @@ interface Activity {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
+  const { user, isAdmin, loading: authLoading } = useAuth();
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+  const [customerStats, setCustomerStats] = useState<CustomerStats | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
+  const loadData = useCallback(async () => {
+    if (authLoading) return;
+    setLoading(true);
 
-      const today = new Date().toISOString().split("T")[0];
-      const monthStart = new Date();
-      monthStart.setDate(1);
+    const today = new Date().toISOString().split("T")[0];
+    const monthStart = new Date();
+    monthStart.setDate(1);
 
+    if (isAdmin && user) {
       const [productsRes, activeRes, revenueRes, pendingRes, activityRes] = await Promise.all([
         supabase.from("products").select("id", { count: "exact", head: true }),
         supabase.from("bookings").select("id", { count: "exact", head: true })
@@ -51,8 +60,7 @@ export default function DashboardPage() {
       ]);
 
       const monthRevenue = (revenueRes.data ?? []).reduce((sum, b) => sum + Number(b.total_price), 0);
-
-      setStats({
+      setAdminStats({
         totalProducts: productsRes.count ?? 0,
         activeRentals: activeRes.count ?? 0,
         monthRevenue,
@@ -68,18 +76,62 @@ export default function DashboardPage() {
           total_price: b.total_price,
         }))
       );
+    } else if (user) {
+      const [productsRes, spendRes, totalRes, activeRes, activityRes] = await Promise.all([
+        supabase.from("products").select("id", { count: "exact", head: true }),
+        supabase.from("bookings").select("total_price")
+          .eq("user_id", user.id).gte("created_at", monthStart.toISOString()).eq("status", "confirmed"),
+        supabase.from("bookings").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id),
+        supabase.from("bookings").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).lte("start_date", today).gte("end_date", today).eq("status", "confirmed"),
+        supabase.from("bookings").select("id, status, created_at, total_price, products(name)")
+          .eq("user_id", user.id).order("created_at", { ascending: false }).limit(5),
+      ]);
 
-      setLoading(false);
+      const monthlySpend = (spendRes.data ?? []).reduce((sum, b) => sum + Number(b.total_price), 0);
+      setCustomerStats({
+        monthlySpend,
+        totalRentals: totalRes.count ?? 0,
+        activeRentals: activeRes.count ?? 0,
+        totalProducts: productsRes.count ?? 0,
+      });
+
+      setActivity(
+        (activityRes.data ?? []).map((b: any) => ({
+          id: b.id,
+          product_name: b.products?.name ?? "Producto",
+          status: b.status,
+          created_at: b.created_at,
+          total_price: b.total_price,
+        }))
+      );
+    } else {
+      // Not logged in — show basic product count
+      const { count } = await supabase.from("products").select("id", { count: "exact", head: true });
+      setCustomerStats({ monthlySpend: 0, totalRentals: 0, activeRentals: 0, totalProducts: count ?? 0 });
     }
-    load();
-  }, []);
 
-  const statCards = stats
+    setLoading(false);
+  }, [user, isAdmin, authLoading]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const statCards = isAdmin && adminStats
     ? [
-        { label: "Equipos Totales", value: String(stats.totalProducts), icon: Package, sub: "en catálogo" },
-        { label: "Alquileres Activos", value: String(stats.activeRentals), icon: CalendarDays, sub: "en curso" },
-        { label: "Ingresos del Mes", value: `€${stats.monthRevenue.toFixed(0)}`, icon: TrendingUp, sub: format(new Date(), "MMMM yyyy", { locale: es }) },
-        { label: "Devoluciones", value: String(stats.pendingReturns), icon: AlertTriangle, sub: "pendientes" },
+        { label: "Equipos Totales", value: String(adminStats.totalProducts), icon: Package, sub: "en catálogo" },
+        { label: "Alquileres Activos", value: String(adminStats.activeRentals), icon: CalendarDays, sub: "en curso" },
+        { label: "Ingresos del Mes", value: `€${adminStats.monthRevenue.toFixed(0)}`, icon: TrendingUp, sub: format(new Date(), "MMMM yyyy", { locale: es }) },
+        { label: "Devoluciones", value: String(adminStats.pendingReturns), icon: AlertTriangle, sub: "pendientes" },
+      ]
+    : customerStats
+    ? [
+        { label: "Equipos Disponibles", value: String(customerStats.totalProducts), icon: Package, sub: "en catálogo" },
+        { label: "Alquileres Activos", value: String(customerStats.activeRentals), icon: CalendarDays, sub: "en curso" },
+        { label: "Gasto Mensual", value: `€${customerStats.monthlySpend.toFixed(0)}`, icon: Wallet, sub: format(new Date(), "MMMM yyyy", { locale: es }) },
+        { label: "Alquileres Totales", value: String(customerStats.totalRentals), icon: TrendingUp, sub: "históricos" },
       ]
     : [];
 
@@ -90,7 +142,7 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Resumen del estado de tu inventario y alquileres.
+              {isAdmin ? "Resumen global de la plataforma." : "Resumen de tu actividad de alquiler."}
             </p>
           </div>
         </ScrollReveal>
@@ -139,7 +191,9 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No hay actividad reciente.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                {user ? "No hay actividad reciente." : "Inicia sesión para ver tu actividad."}
+              </p>
             ) : (
               <div className="space-y-3">
                 {activity.map((a) => (
